@@ -1,0 +1,78 @@
+import aiosqlite
+from aiogram import Bot, Dispatcher, types
+from aiogram.utils import executor
+
+API_TOKEN = 8535990773:AAFyZA_rV3K8e20PKLiDsWy9rAWcWm7ahN0
+ADMIN_ID = 8553073361
+CHANNEL = easykamai24
+
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
+
+async def init_db():
+    async with aiosqlite.connect("database.db") as db:
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            user_id INTEGER PRIMARY KEY,
+            referrer INTEGER,
+            points INTEGER DEFAULT 10,
+            withdraw INTEGER DEFAULT 0
+        )
+        """)
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS withdraw_requests(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            method TEXT,
+            details TEXT,
+            status TEXT DEFAULT 'pending'
+        )
+        """)
+        await db.commit()
+
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    user_id = message.from_user.id
+    args = message.get_args()
+
+    async with aiosqlite.connect("database.db") as db:
+        cursor = await db.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+        user = await cursor.fetchone()
+
+        if not user:
+            referrer = int(args) if args.isdigit() and int(args)!=user_id else None
+            await db.execute("INSERT INTO users(user_id,referrer) VALUES(?,?)",(user_id,referrer))
+            
+            if referrer:
+                await db.execute("UPDATE users SET points=points+5 WHERE user_id=?", (referrer,))
+            
+            await db.commit()
+
+    await message.answer("🎉 Welcome!\nYou received 10 points.\n\nUse /balance")
+
+@dp.message_handler(commands=['balance'])
+async def balance(message: types.Message):
+    async with aiosqlite.connect("database.db") as db:
+        cursor = await db.execute("SELECT points FROM users WHERE user_id=?", (message.from_user.id,))
+        data = await cursor.fetchone()
+        if data:
+            await message.answer(f"💰 Balance: {data[0]} Points")
+
+@dp.message_handler(commands=['withdraw'])
+async def withdraw(message: types.Message):
+    async with aiosqlite.connect("database.db") as db:
+        cursor = await db.execute("SELECT points FROM users WHERE user_id=?", (message.from_user.id,))
+        data = await cursor.fetchone()
+
+        if data and data[0]>=500:
+            await db.execute("INSERT INTO withdraw_requests(user_id,method,details) VALUES(?,?,?)",
+                             (message.from_user.id,"Bkash","Manual Entry"))
+            await db.commit()
+            await message.answer("⏳ Withdraw request submitted.")
+        else:
+            await message.answer("❌ Minimum withdraw 500 points.")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(init_db())
+    executor.start_polling(dp)
