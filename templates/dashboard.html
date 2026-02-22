@@ -1,0 +1,7 @@
+<h1>Admin Dashboard</h1>
+<p>Total Users: {{ users }}</p>
+
+<h2>Pending Withdraw Requests</h2>
+{% for w in withdraws %}
+<p>User ID: {{ w[1] }}</p>
+{% endfor %}
